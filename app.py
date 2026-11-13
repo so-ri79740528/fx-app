@@ -12,7 +12,7 @@ import io
 # ⚠️ ここに先ほどメモしたフォルダIDを貼り付けます！
 # ==========================================
 DRIVE_FOLDER_ID = "1TI7JnkiLc3IYgTmkOHMeQSxan5oUT5d0"
-SHEET_NAME = "FX_Log"
+SHEET_NAME = "fx_log"
 
 # --- ページ設定 ---
 st.title("FXトレード記録ノート 📈 (クラウド保存版)")
