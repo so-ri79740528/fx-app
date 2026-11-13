@@ -4,8 +4,6 @@ import json
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
-import requests
-import base64
 
 # ==========================================
 SHEET_NAME = "fx-log"
@@ -19,7 +17,10 @@ st.title("FXトレード記録ノート 📈")
 @st.cache_resource
 def init_google():
     secret_dict = json.loads(st.secrets["google_credentials"])
-    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
     creds = Credentials.from_service_account_info(secret_dict, scopes=scopes)
     gc = gspread.authorize(creds)
     return gc.open(SHEET_NAME).sheet1
@@ -31,7 +32,6 @@ except Exception as e:
     st.stop()
 
 # --- データの取得 ---
-# 画面の一番上でデータを読み込みます
 data = sheet.get_all_records()
 df = pd.DataFrame(data)
 
@@ -42,7 +42,6 @@ st.header("📊 サマリー")
 today_str = datetime.today().strftime('%Y-%m-%d')
 
 if not df.empty and "損益(円)" in df.columns and "日時" in df.columns:
-    # 損益を計算用の数値に変換
     df["損益(円)"] = pd.to_numeric(df["損益(円)"], errors='coerce').fillna(0)
     
     # 今日の日付と一致するデータだけを集めて合計
@@ -52,21 +51,19 @@ if not df.empty and "損益(円)" in df.columns and "日時" in df.columns:
     # すべての期間の合計損益
     total_pnl = df["損益(円)"].sum()
     
-    # 画面の上に大きく表示
     col_a, col_b = st.columns(2)
     col_a.metric(label=f"今日の損益 ({today_str})", value=f"{int(today_pnl):,} 円")
     col_b.metric(label="合計損益", value=f"{int(total_pnl):,} 円")
 else:
     st.info("データがまだないか、計算できません。")
 
-st.divider() # 区切り線
+st.divider()
 
 # ==========================================
-# 1. 入力フォーム（価格入力を削除）
+# 1. 入力フォーム
 # ==========================================
 st.header("新規トレード記録")
 with st.form("trade_form", clear_on_submit=True):
-    # 3列だったものを2列に変更し、スッキリさせました
     col1, col2 = st.columns(2)
     with col1:
         date = st.date_input("トレード日時", datetime.today())
@@ -77,41 +74,18 @@ with st.form("trade_form", clear_on_submit=True):
         
     pnl = st.number_input("損益 (円) ※マイナスは - をつける", step=100)
     reason = st.text_area("理由・反省点")
-    uploaded_file = st.file_uploader("チャート画像を添付", type=['png', 'jpg', 'jpeg'])
 
     submitted = st.form_submit_button("記録を保存する")
 
     if submitted:
-        with st.spinner("データを送信中..."):
-            image_url = ""
-            
-            # ImgBBに画像をアップロード
-            if uploaded_file is not None:
-                try:
-                    img_bytes = uploaded_file.getvalue()
-                    img_b64 = base64.b64encode(img_bytes).decode('utf-8')
-                    res = requests.post(
-                        "https://api.imgbb.com/1/upload",
-                        data={
-                            "key": st.secrets["IMGBB_API_KEY"],
-                            "image": img_b64
-                        }
-                    )
-                    if res.status_code == 200:
-                        image_url = res.json()["data"]["url"]
-                    else:
-                        st.warning("画像のアップロードに失敗しました。文字データのみ保存します。")
-                except Exception as e:
-                    st.warning(f"画像処理エラーが発生しました: {e}")
-
-            # スプレッドシートに行を追加（列数に合わせて7項目に修正）
+        with st.spinner("スプレッドシートに送信中..."):
+            # スプレッドシートに行を追加（6項目）
             row_data = [
-                str(date), pair, trade_type, lot, pnl, reason, image_url
+                str(date), pair, trade_type, lot, pnl, reason
             ]
             try:
                 sheet.append_row(row_data)
                 st.success("トレード記録を保存しました！")
-                # 🌟 保存した瞬間に画面を自動で再読み込みし、上の「今日の損益」を最新にする
                 st.rerun() 
             except Exception as e:
                 st.error(f"スプレッドシートへの保存に失敗しました: {e}")
@@ -122,15 +96,11 @@ with st.form("trade_form", clear_on_submit=True):
 st.header("トレード履歴")
 
 if not df.empty:
-    st.dataframe(
-        df,
-        column_config={
-            "画像URL": st.column_config.LinkColumn("画像リンク")
-        },
-        use_container_width=True
-    )
+    st.dataframe(df, use_container_width=True)
     
     st.subheader("累積損益の推移")
     if "損益(円)" in df.columns:
         df["累積損益"] = df["損益(円)"].cumsum()
         st.line_chart(df["累積損益"])
+else:
+    st.info("まだ記録がありません。一番上のフォームから記録を追加してください。")
