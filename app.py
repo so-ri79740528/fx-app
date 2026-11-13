@@ -21,56 +21,67 @@ st.title("FXトレード記録ノート 📈")
 # 1. 入力フォームの作成
 # -----------------------------------
 st.header("新規トレード記録")
-with st.form("trade_form", clear_on_submit=True):
-    col1, col2, col3 = st.columns(3)
+
+# 値を入力した瞬間に画面を更新（自動計算）させるため、st.formは外しています
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    date = st.date_input("トレード日時", datetime.today())
+    pair = st.selectbox("通貨ペア", ["USD/JPY", "EUR/USD", "GBP/JPY", "EUR/JPY", "AUD/JPY", "その他"])
+with col2:
+    trade_type = st.radio("売買", ["買い (Long)", "売り (Short)"])
+    lot = st.number_input("数量 (Lot)", min_value=0.01, step=0.01, value=0.50)
+with col3:
+    entry_price = st.number_input("エントリー価格", format="%.3f", value=0.000)
+    exit_price = st.number_input("決済価格", format="%.3f", value=0.000)
+
+# --- 損益の自動計算 ---
+# 1Lot = 10,000通貨を基準に計算
+multiplier = 10000
+
+# 両方の価格が入力された場合のみ計算を実行
+if entry_price > 0 and exit_price > 0:
+    if trade_type == "買い (Long)":
+        auto_pnl = (exit_price - entry_price) * lot * multiplier
+    else: # 売り (Short)
+        auto_pnl = (entry_price - exit_price) * lot * multiplier
+    auto_pnl = int(round(auto_pnl)) # 小数点以下を四捨五入して整数化
+else:
+    auto_pnl = 0
+
+# 自動計算された損益を大きくリアルタイム表示
+st.metric(label="予想損益 (円)", value=f"{auto_pnl:,} 円")
+
+reason = st.text_area("エントリーの根拠・決済の理由・反省点")
+uploaded_file = st.file_uploader("チャート画像を添付 (任意)", type=['png', 'jpg', 'jpeg'])
+
+# 保存ボタン
+if st.button("記録を保存する"):
+    image_path = ""
+    if uploaded_file is not None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_name = f"{timestamp}_{uploaded_file.name}"
+        image_path = os.path.join(IMAGE_DIR, file_name)
+        with open(image_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+    # 新しいデータをデータフレーム化（損益には自動計算された auto_pnl を直接代入）
+    new_data = pd.DataFrame([{
+        "日時": date,
+        "通貨ペア": pair,
+        "売買": trade_type,
+        "数量(Lot)": lot,
+        "エントリー価格": entry_price,
+        "決済価格": exit_price,
+        "損益(円)": auto_pnl, 
+        "エントリー理由・反省点": reason,
+        "画像パス": image_path
+    }])
     
-    with col1:
-        date = st.date_input("トレード日時", datetime.today())
-        pair = st.selectbox("通貨ペア", ["USD/JPY", "EUR/USD", "GBP/JPY", "EUR/JPY", "AUD/JPY", "その他"])
-    with col2:
-        trade_type = st.radio("売買", ["買い (Long)", "売り (Short)"])
-        lot = st.number_input("数量 (Lot)", min_value=0.01, step=0.01, value=1.00)
-    with col3:
-        entry_price = st.number_input("エントリー価格", format="%.3f")
-        exit_price = st.number_input("決済価格", format="%.3f")
-        
-    pnl = st.number_input("損益 (円) ※マイナスは - をつける", step=100)
-    reason = st.text_area("エントリーの根拠・決済の理由・反省点")
+    # CSVファイルに追記
+    new_data.to_csv(DATA_FILE, mode='a', header=False, index=False)
+    st.success(f"損益 {auto_pnl:,} 円のトレード記録を保存しました！")
     
-    # 画像アップロード機能を追加
-    uploaded_file = st.file_uploader("チャート画像を添付 (任意)", type=['png', 'jpg', 'jpeg'])
-
-    submitted = st.form_submit_button("記録を保存する")
-
-    if submitted:
-        image_path = ""
-        # 画像がアップロードされた場合の保存処理
-        if uploaded_file is not None:
-            # 重複を避けるため、現在時刻をファイル名に含める
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            file_name = f"{timestamp}_{uploaded_file.name}"
-            image_path = os.path.join(IMAGE_DIR, file_name)
-            
-            # 画像をフォルダに書き込む
-            with open(image_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-
-        # データを保存
-        new_data = pd.DataFrame([{
-            "日時": date,
-            "通貨ペア": pair,
-            "売買": trade_type,
-            "数量(Lot)": lot,
-            "エントリー価格": entry_price,
-            "決済価格": exit_price,
-            "損益(円)": pnl,
-            "エントリー理由・反省点": reason,
-            "画像パス": image_path
-        }])
-        
-        new_data.to_csv(DATA_FILE, mode='a', header=False, index=False)
-        st.success("トレード記録と画像を保存しました！")
-
 # -----------------------------------
 # 2. データの表示と分析
 # -----------------------------------
