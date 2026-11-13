@@ -90,8 +90,30 @@ if os.path.exists(DATA_FILE):
     df_display = pd.read_csv(DATA_FILE)
     
     if not df_display.empty:
+        # --- 累積損益のグラフ作成（初期値0スタート） ---
+        st.subheader("累積損益の推移 📈")
+        
+        # 損益データの先頭に「0」を追加し、リスト化してから累積和（cumsum）を取る
+        # これによりグラフの左端が必ず「0」からスタートします
+        cumulative_pnl = [0] + df_display["損益(円)"].cumsum().tolist()
+        
+        # 折れ線グラフを描画
+        st.line_chart(cumulative_pnl)
+        
+        # 今までの合計損益を大きく表示
+        total_pnl = df_display["損益(円)"].sum()
+        if total_pnl >= 0:
+            st.metric(label="現在の合計損益", value=f"+{total_pnl:,.0f} 円")
+        else:
+            st.metric(label="現在の合計損益", value=f"{total_pnl:,.0f} 円")
+
+        # --- テーブルと詳細ログの表示 ---
+        st.subheader("トレード履歴")
         # 画像パスの列は表では見づらいため隠して表示
-        st.dataframe(df_display.drop(columns=["画像パス"]), use_container_width=True)
+        if "画像パス" in df_display.columns:
+            st.dataframe(df_display.drop(columns=["画像パス"]), use_container_width=True)
+        else:
+            st.dataframe(df_display, use_container_width=True)
         
         st.subheader("詳細ログ（画像つき）")
         # 履歴を1件ずつアコーディオン（折りたたみ）で表示
@@ -99,8 +121,8 @@ if os.path.exists(DATA_FILE):
             with st.expander(f"{row['日時']} | {row['通貨ペア']} | {row['売買']} | 損益: {row['損益(円)']}円"):
                 st.write(f"**理由・反省点:** {row['エントリー理由・反省点']}")
                 
-                # 画像パスが存在し、かつファイルが実在する場合のみ画像を表示
-                if pd.notna(row['画像パス']) and row['画像パス'] != "" and os.path.exists(row['画像パス']):
+                # 画像が存在する場合のみ表示
+                if "画像パス" in row and pd.notna(row['画像パス']) and row['画像パス'] != "" and os.path.exists(row['画像パス']):
                     st.image(row['画像パス'], caption="エントリー時のチャート", use_container_width=True)
     else:
-        st.info("まだ記録がありません。")
+        st.info("まだ記録がありません。") 
